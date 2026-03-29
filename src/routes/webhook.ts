@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { createProject } from "../controller/project.js";
+import { createProject, handleWebhook } from "../controller/project.js";
 
 const WebhookRouter = Router();
 
-WebhookRouter.get("/", () => {});
+WebhookRouter.post("/", handleWebhook);
 
 export default WebhookRouter;

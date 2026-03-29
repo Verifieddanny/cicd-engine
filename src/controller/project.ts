@@ -76,7 +76,7 @@ export const createProject = async (
           active: true,
           events: ["push", "pull_request"],
           config: {
-            url: "http://localhost:8080/api/webhook",
+            url: "https://angry-town.outray.app/api/webhook",
             content_type: "json",
             insecure_ssl: "0",
             secret: process.env.WEBHOOK_SECRET,

@@ -62,6 +62,7 @@ export const runBuild = async (
   const buildPath = path.join(process.cwd(), "temp", folder);
 
   fs.mkdirSync(buildPath, { recursive: true });
+  let hasEnvFile = false;
 
   const projectSecrets = project.secrets || [];
 
@@ -70,6 +71,7 @@ export const runBuild = async (
   if (projectSecrets.length > 0) {
     const envLines = projectSecrets.map((s) => {
       const plainValue = decrypt(s.value);
+      hasEnvFile = true;
       return `${s.key}=${plainValue}`;
     });
 
@@ -161,6 +163,8 @@ export const runBuild = async (
 
   builder.stderr.on("data", async (data) => {
     const logString = data.toString();
+    const isActualError = /error|failed|fatal|exception/i.test(logString);
+    const logType = isActualError ? "error" : "info";
 
     io.to(project.userId.toString()).emit("build_errors", {
       projectId: project.id,
@@ -173,7 +177,7 @@ export const runBuild = async (
       buildId: newBuild.id,
     });
 
-    console.log(`${i} [BUILD LOG ERROR]: ${data}`);
+    console.log(`[BUILD ${logType.toUpperCase()}]: ${logString}`);
   });
   builder.on("close", async (code) => {
     if (logBuffer.length > 0) {
@@ -190,20 +194,12 @@ export const runBuild = async (
     } else {
       console.log(`[CI]: Build ${newBuild.id} successful!`);
       logBuffer.length = 0;
-      const runner = spawn(
-        "docker",
-        [
-          "run",
-          "--rm",
-          "--env-file",
-          ".env",
-          imageTag,
-          "sh",
-          "-c",
-          project.buildCommand,
-        ],
-        { cwd: buildPath },
-      );
+      const runArgs = ["run", "--rm"];
+      if (hasEnvFile) {
+        runArgs.push("--env-file", ".env");
+      }
+      runArgs.push(imageTag, "sh", "-c", project.buildCommand);
+      const runner = spawn("docker", runArgs, { cwd: buildPath });
 
       let j = 1;
       runner.stdout.on("data", async (data) => {
@@ -229,7 +225,7 @@ export const runBuild = async (
           log: data.toString(),
           lineNumber: j,
         });
-        
+
         logBuffer.push({
           lineNumber: j++,
           log: logString,
