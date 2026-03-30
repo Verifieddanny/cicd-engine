@@ -160,6 +160,11 @@ GitHub can't reach localhost. Use a tunneling tool to expose your server:
 ```bash
 ngrok http 8080
 ```
+or 
+
+```bash
+outray 8080
+```
 
 Update the webhook URL in your project creation to use the tunnel URL.
 
