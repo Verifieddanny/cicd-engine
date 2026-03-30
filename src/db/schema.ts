@@ -17,9 +17,7 @@ export const buildStatusEnum = pgEnum("build_status", [
   "failed",
 ]);
 export const deployedStatusEnum = pgEnum("deployed_status", [
-  "deploying",
   "live",
-  "failed",
   "rolled_back",
 ]);
 
@@ -38,7 +36,10 @@ export const projectTable = pgTable("project", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 255 }).notNull(),
   branch: varchar("branch", { length: 100 }).notNull(),
-  buildCommand: text("build_command").notNull(),
+  installCommand: text("install_command").default("npm install"),
+  buildCommand: text("build_command"),
+  outputDirectory: varchar("output_directory", { length: 255 })
+    .default("./"),
   repoUrl: varchar("repo_url", { length: 500 }).notNull(),
   webhookId: varchar("webhook_id", { length: 255 }).notNull(),
   userId: bigint("user_id", { mode: "number" })
@@ -74,7 +75,7 @@ export const buildLogs = pgTable("build_logs", {
 
 export const deploymentTable = pgTable("deployment", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-  status: deployedStatusEnum("status").default("deploying").notNull(),
+  status: deployedStatusEnum("status").notNull(),
   deployedUrl: varchar("deployed_url", { length: 500 }),
   buildId: bigint("build_id", { mode: "number" })
     .notNull()

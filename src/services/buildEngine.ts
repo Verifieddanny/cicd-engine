@@ -8,6 +8,8 @@ import { db } from "../db/index.js";
 import { buildLogs, buildTable } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import type { DefaultEventsMap, Server } from "socket.io";
+import { deployProject } from "./deploymentEngine.js";
+import type { NextFunction } from "express";
 
 interface projectInterface {
   id: number;
@@ -15,7 +17,9 @@ interface projectInterface {
   updatedAt: Date;
   name: string;
   branch: string;
-  buildCommand: string;
+  installCommand: string | null;
+  buildCommand: string | null;
+  outputDirectory: string | null;
   repoUrl: string;
   webhookId: string;
   userId: number;
@@ -56,6 +60,7 @@ export const runBuild = async (
   branch: string,
   newBuild: buildInterface,
   io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+  next: NextFunction,
 ) => {
   const buildId = Date.now();
   const folder = `${project.name}-${buildId}`;
@@ -101,12 +106,52 @@ export const runBuild = async (
     },
   );
 
-  cloner.stderr.on("data", (data) => console.error(`[CLONE ERROR]: ${data}`));
+  cloner.stderr.on("data", (data) => {
+    const isActualError = /error|failed|fatal|exception/i.test(data.toString());
+    const logType = isActualError ? "error" : "info";
+
+    if (isActualError) {
+      console.error(`[CLONE ERROR]: ${data}`);
+    }
+  });
 
   const [cloneExitCode] = await once(cloner, "close");
   if (cloneExitCode !== 0) {
     const error: CustomError = new Error("Git clone failed");
     throw error;
+  }
+
+  if (!project.buildCommand) {
+    await deployProject(
+      project.userId,
+      project.id,
+      newBuild.id,
+      buildPath,
+      project.name,
+      io,
+    );
+    fs.rmSync(buildPath, { recursive: true, force: true });
+    return;
+  }
+
+  let outputDir = project.outputDirectory;
+
+  if (
+    fs.existsSync(path.join(buildPath, "vite.config.ts")) ||
+    fs.existsSync(path.join(buildPath, "vite.config.js"))
+  ) {
+    console.log(
+      `[CI]: Vite project detected. Setting output directory to 'dist'...`,
+    );
+    outputDir = "dist";
+  } else if (
+    fs.existsSync(path.join(buildPath, "next.config.ts")) ||
+    fs.existsSync(path.join(buildPath, "next.config.js"))
+  ) {
+    console.log(
+      `[CI]: Next.js project detected. Setting output directory to '.next'...`,
+    );
+    outputDir = ".next";
   }
 
   const dockerfilePath = path.join(buildPath, "Dockerfile");
@@ -186,19 +231,35 @@ export const runBuild = async (
     }
 
     if (code !== 0) {
-      console.error(`[CI]: Build ${newBuild.id} failed with code ${code}`);
+      const err: CustomError = new Error(
+        `[CI]: Build ${newBuild.id} failed with code ${code}`,
+      );
+      err.statusCode = 500;
       await db
         .update(buildTable)
         .set({ status: "failed", finishedAt: new Date() })
         .where(eq(buildTable.id, newBuild.id));
+      next(err);
     } else {
       console.log(`[CI]: Build ${newBuild.id} successful!`);
       logBuffer.length = 0;
       const runArgs = ["run", "--rm"];
+
+      runArgs.push("-v", `${buildPath}:/app`);
+
+      if (process.getuid && process.getgid) {
+        runArgs.push("--user", `${process.getuid()}:${process.getgid()}`);
+      }
+
       if (hasEnvFile) {
         runArgs.push("--env-file", ".env");
       }
-      runArgs.push(imageTag, "sh", "-c", project.buildCommand);
+      runArgs.push(
+        imageTag,
+        "sh",
+        "-c",
+        `cd /app && ${project.installCommand || "npm install"} && ${project.buildCommand}`,
+      );
       const runner = spawn("docker", runArgs, { cwd: buildPath });
 
       let j = 1;
@@ -247,18 +308,34 @@ export const runBuild = async (
               .update(buildTable)
               .set({ status: "passed", finishedAt: new Date() })
               .where(eq(buildTable.id, newBuild.id));
+
+            if (!hasEnvFile) {
+              await deployProject(
+                project.userId,
+                project.id,
+                newBuild.id,
+                buildPath,
+                project.name,
+                io,
+                outputDir,
+              );
+            }
           } else {
-            console.log("❌ CI FAILED: Tests did not pass.");
+            const err: CustomError = new Error(
+              "CI FAILED: Tests did not pass.",
+            );
+            err.statusCode = 500;
             await db
               .update(buildTable)
               .set({ status: "failed", finishedAt: new Date() })
               .where(eq(buildTable.id, newBuild.id));
+            next(err);
           }
 
           fs.rmSync(buildPath, { recursive: true, force: true });
         } catch (err) {
           const error: CustomError = new Error(`[CLEANUP ERROR]: ${err}`);
-          throw error;
+          next(error);
         }
       });
     }

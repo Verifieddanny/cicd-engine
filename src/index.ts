@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import path from "node:path";
+import fs from "node:fs";
 import express, {
   type Application,
   type NextFunction,
@@ -22,6 +24,40 @@ dotenv.config();
 const app: Application = express();
 
 const ENTRY_POINT = "/api";
+const DEPLOYMENT_BASE_PATH = path.join(process.cwd(), "deployments");
+
+const subdomainMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const host = req.headers.host;
+  if (!host) {
+    return next();
+  }
+
+  const subdomain = host.split(".")[0];
+
+  if (subdomain && subdomain !== "www") {
+    const deploymentPath = path.join(DEPLOYMENT_BASE_PATH, subdomain);
+
+    if (fs.existsSync(deploymentPath)) {
+      return express.static(deploymentPath)(req, res, (err) => {
+        if (err) {
+          next(err);
+        }
+
+        res.sendFile(path.join(deploymentPath, "index.html"), (err) => {
+          if (err) {
+            next(err);
+          }
+        });
+      });
+    }
+  }
+
+  next();
+};
 
 app.use(express.json());
 
@@ -36,6 +72,8 @@ app.use(
     res.status(statusCode).json({ message, data });
   },
 );
+
+app.use(subdomainMiddleware);
 
 app.use(`${ENTRY_POINT}/auth`, AuthRouter);
 app.use(`${ENTRY_POINT}/repo`, isAuth, ProjectRouter);

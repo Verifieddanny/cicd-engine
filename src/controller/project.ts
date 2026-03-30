@@ -53,6 +53,7 @@ export const createProject = async (
     const projectName = req.body.name;
     const branch = req.body.branch;
     const buildCommand = req.body.buildCommand;
+    const installCommand = req.body.installCommand;
     const repoUrl = req.body.repoUrl;
     const secrets = req.body.secrets || [];
 
@@ -76,7 +77,7 @@ export const createProject = async (
           active: true,
           events: ["push", "pull_request"],
           config: {
-            url: "https://angry-town.outray.app/api/webhook",
+            url: "https://emotional-hostel.outray.app/api/webhook",
             content_type: "json",
             insecure_ssl: "0",
             secret: process.env.WEBHOOK_SECRET,
@@ -99,6 +100,7 @@ export const createProject = async (
         name: projectName,
         branch,
         buildCommand,
+        installCommand,
         repoUrl,
         webhookId: webhook.id.toString(),
         userId: Number(userId),
@@ -219,7 +221,7 @@ export const handleWebhook = async (
         },
       });
 
-      await runBuild(project, repoUrl, branch, newBuild, io);
+      await runBuild(project, repoUrl, branch, newBuild, io, next);
     }
   } catch (err) {
     const error = err as CustomError;
