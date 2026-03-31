@@ -5,10 +5,11 @@ A CI/CD deployment pipeline built from scratch. Connect a GitHub repo, push code
 ## How It Works
 
 1. **Authenticate** with GitHub OAuth — your GitHub login is your account
-2. **Connect a repo** — select a repository, branch, and build command. The server registers a webhook on your repo via GitHub's API
-3. **Push code** — GitHub fires a signed webhook to the server
-4. **Build** — the server clones your repo, generates a Dockerfile if needed, builds a Docker image, and runs your build command inside an isolated container
-5. **Deploy** — if the build passes and the project has no sensitive env variables, the output is deployed and served at a subdomain
+2. **Browse repos** — view your personal repos and organization repos, select one to connect
+3. **Connect a repo** — choose a branch and build command. The server registers a webhook on your repo via GitHub's API
+4. **Push code** — GitHub fires a signed webhook to the server
+5. **Build** — the server clones your repo, generates a Dockerfile if needed, builds a Docker image, and runs your build command inside an isolated container
+6. **Deploy** — if the build passes and the project has no sensitive env variables, the output is deployed and served at a subdomain
 
 ## Architecture
 
@@ -25,11 +26,20 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - GitHub OAuth flow with access token exchange
 - Email fallback via `/user/emails` endpoint when primary email is hidden
 - JWT session tokens
+- Scopes: read:user, repo, read:org
+
+**Repo Browsing**
+- Fetch user's organizations and personal account
+- List repos per organization or personal account
+- Pagination support
+- Sorted by creation date (descending), filtered to owned repos only
+- Returns refined repo data (name, default branch, URL, owner)
 
 **Project Management**
 - Connect any GitHub repo (public or private)
 - Automatic webhook registration via GitHub API
 - Custom branch selection, build commands, and install commands
+- Framework detection for automatic output directory resolution
 - Duplicate project name validation
 - Encrypted secrets storage (AES-256-GCM) for environment variables
 
@@ -78,7 +88,8 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 src/
 ├── controller/
 │   ├── auth.ts              # GitHub OAuth + JWT issuance
-│   └── project.ts           # Project creation + webhook handler
+│   ├── project.ts           # Project creation + webhook handler
+│   └── repos.ts             # Fetch organizations and repositories
 ├── db/
 │   ├── index.ts             # PostgreSQL pool + Drizzle instance
 │   └── schema.ts            # Tables, enums, and relations
@@ -89,7 +100,7 @@ src/
 │   └── socket-auth.ts       # JWT verification for WebSocket
 ├── routes/
 │   ├── auth.ts              # OAuth routes
-│   ├── project.ts           # Project CRUD routes
+│   ├── project.ts           # Project CRUD + repo browsing routes
 │   └── webhook.ts           # GitHub webhook endpoint
 ├── services/
 │   ├── buildEngine.ts       # Clone, build, test pipeline
@@ -160,7 +171,7 @@ GitHub can't reach localhost. Use a tunneling tool to expose your server:
 ```bash
 ngrok http 8080
 ```
-or 
+or
 
 ```bash
 outray 8080
@@ -174,6 +185,8 @@ Update the webhook URL in your project creation to use the tunnel URL.
 |--------|----------|------|-------------|
 | GET | `/api/auth/github` | No | Redirect to GitHub OAuth |
 | GET | `/api/auth/github/callback` | No | Handle OAuth callback |
+| GET | `/api/repo/orgs` | JWT | Fetch user's organizations + personal account |
+| GET | `/api/repo/repos` | JWT | Fetch repos for an org or personal account |
 | POST | `/api/repo` | JWT | Create project + register webhook |
 | POST | `/api/webhook` | HMAC | Receive GitHub push events |
 
@@ -186,6 +199,18 @@ Update the webhook URL in your project creation to use the tunnel URL.
 | `run_logs` | Server → Client | Test/run output |
 | `run_error` | Server → Client | Test/run errors |
 | `deploymentUpdate` | Server → Client | Deployment status + URL |
+
+### Testing Deployed Projects Locally
+
+Deployed projects are served via subdomain routing. To test locally, use `lvh.me` which resolves to 127.0.0.1:
+```
+http://<project-name>.lvh.me:8080
+```
+
+For example, a project named "test-repo" would be accessible at:
+```
+http://test-repo.lvh.me:8080
+```
 
 ## License
 

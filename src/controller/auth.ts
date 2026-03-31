@@ -10,10 +10,11 @@ export const redirectToGithub = (
   res: Response,
   _next: NextFunction,
 ) => {
+  const scopes = "read:user,repo,read:org";
   res
     .status(302)
     .redirect(
-      `${GITHUB_AUTH_URL}?client_id=${process.env.CLIENT_ID}&scope=read:user,repo`,
+      `${GITHUB_AUTH_URL}?client_id=${process.env.CLIENT_ID}&scope=${scopes}&prompt=consent`,
     );
 };
 
