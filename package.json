@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "mocha --import=tsx --no-warnings 'tests/**/*.spec.ts' --timeout 25000 --exit"
   },
   "type": "module",
   "keywords": [],
@@ -13,13 +14,24 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/chai-as-promised": "^8.0.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
+    "@types/sinon": "^21.0.0",
+    "@types/sinon-chai": "^4.0.0",
+    "chai": "^6.2.2",
+    "chai-as-promised": "^8.0.2",
     "drizzle-kit": "^0.31.10",
+    "esmock": "^2.7.3",
     "jsonwebtoken": "^9.0.3",
+    "mocha": "^11.7.5",
+    "sinon": "^21.0.3",
+    "sinon-chai": "^4.0.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },

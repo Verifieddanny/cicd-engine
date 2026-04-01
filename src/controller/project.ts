@@ -16,7 +16,7 @@ import {
 import { eq } from "drizzle-orm";
 import { validationResult } from "express-validator";
 import { encrypt } from "../lib/encryption.js";
-import { runBuild } from "../services/buildEngine.js";
+import * as buildService from "../services/buildEngine.js";
 
 export const createProject = async (
   req: AuthRequest,
@@ -215,13 +215,13 @@ export const handleWebhook = async (
       }
 
       res.status(201).json({
-        message: "Build Created",
+        message: "Build Queued",
         build: {
           ...newBuild,
         },
       });
 
-      await runBuild(project, repoUrl, branch, newBuild, io, next);
+      await buildService.runBuild(project, repoUrl, branch, newBuild, io, next);
     }
   } catch (err) {
     const error = err as CustomError;

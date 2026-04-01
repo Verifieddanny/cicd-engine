@@ -211,6 +211,12 @@ For example, a project named "test-repo" would be accessible at:
 ```
 http://test-repo.lvh.me:8080
 ```
+### Running Tests
+```bash
+npm test
+```
+
+8 tests covering authentication, project creation, repo browsing, and webhook handling.
 
 ## License
 
