@@ -77,7 +77,7 @@ export const createProject = async (
           active: true,
           events: ["push", "pull_request"],
           config: {
-            url: "https://emotional-hostel.outray.app/api/webhook",
+            url: `${process.env.WEBHOOK_CALLBACK}/api/webhook`,
             content_type: "json",
             insecure_ssl: "0",
             secret: process.env.WEBHOOK_SECRET,
