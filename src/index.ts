@@ -78,6 +78,12 @@ app.use(subdomainMiddleware);
 app.use(`${ENTRY_POINT}/auth`, AuthRouter);
 app.use(`${ENTRY_POINT}/repo`, isAuth, ProjectRouter);
 app.use(`${ENTRY_POINT}/webhook`, WebhookRouter);
+app.get("/health", (_req, res) => {
+  res.status(200).json({ message: "OK" });
+});
+app.get(`${ENTRY_POINT}`, (_req, res) => {
+  res.status(200).json({ message: "Welcome to the CI/CD Pipeline API" });
+});
 
 export const server = createServer(app);
 const io = new Server(server, {
