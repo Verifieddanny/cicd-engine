@@ -142,7 +142,7 @@ CLIENT_SECRET=your_github_oauth_client_secret
 SECRET=your_jwt_secret
 ENCRYPTION_KEY=your_32_byte_hex_key
 WEBHOOK_SECRET=your_webhook_secret
-BASE_DOMAIN=localhost:8080
+BASE_DOMAIN=lvh.me:8080
 ```
 
 Generate the encryption key:
