@@ -9,6 +9,7 @@ import {
 import { db } from "../db/index.js";
 import {
   buildTable,
+  deploymentTable,
   projectTable,
   secretsTable,
   userTable,
@@ -223,6 +224,384 @@ export const handleWebhook = async (
 
       await buildService.runBuild(project, repoUrl, branch, newBuild, io, next);
     }
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const getProjects = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+
+    const projects = await db.query.projectTable.findMany({
+      where: (table, { eq }) => eq(table.userId, Number(userId)),
+      with: {
+        secrets: true,
+        builds: {
+          with: {
+            deployment: true,
+          },
+        },
+      },
+    });
+
+    if (!projects) {
+      const error: CustomError = new Error("Failed to fetch projects");
+      error.statusCode = 500;
+      throw error;
+    }
+
+    res.status(200).json({
+      message: "Projects fetched",
+      projects,
+    });
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const updateProject = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const projectId = req.params.projectId;
+    const { name, branch, buildCommand, installCommand } = req.body;
+    const secrets = req.body.secrets || [];
+
+    if (!projectId) {
+      const error: CustomError = new Error("Project ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const project = await db.query.projectTable.findFirst({
+      where: eq(projectTable.id, Number(projectId)),
+    });
+
+    if (!project) {
+      const error: CustomError = new Error("Project not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (project.userId !== Number(userId)) {
+      const error: CustomError = new Error("Unauthorized");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const updatedProject = await db
+      .update(projectTable)
+      .set({
+        name: name || project.name,
+        branch: branch || project.branch,
+        buildCommand: buildCommand || project.buildCommand,
+        installCommand: installCommand || project.installCommand,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectTable.id, Number(projectId)))
+      .returning();
+
+    if (!updatedProject) {
+      const error: CustomError = new Error("Failed to update project");
+      error.statusCode = 500;
+      throw error;
+    }
+
+    if (secrets && secrets.length > 0) {
+      const secretsToInsert = secrets.map(
+        (s: { key: string; value: string }) => ({
+          projectId: updatedProject[0]?.id,
+          key: s.key,
+          value: encrypt(s.value),
+        }),
+      );
+
+      await db.insert(secretsTable).values(secretsToInsert);
+    }
+
+    res.status(200).json({
+      message: "Project updated",
+      project: updatedProject[0],
+    });
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const deleteProject = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const projectId = req.params.projectId;
+
+    if (!projectId) {
+      const error: CustomError = new Error("Project ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!userId) {
+      const error: CustomError = new Error("User ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const project = await db.query.projectTable.findFirst({
+      where: eq(projectTable.id, Number(projectId)),
+    });
+
+    if (!project) {
+      const error: CustomError = new Error("Project not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (project.userId !== Number(userId)) {
+      const error: CustomError = new Error("Unauthorized");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    await db.delete(projectTable).where(eq(projectTable.id, Number(projectId)));
+
+    res.status(200).json({
+      message: "Project deleted",
+    });
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const rebuild = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const buildId = req.params.buildId;
+
+    if (!buildId) {
+      const error: CustomError = new Error("Build ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!userId) {
+      const error: CustomError = new Error("User ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const build = await db.query.buildTable.findFirst({
+      where: eq(buildTable.id, Number(buildId)),
+      with: {
+        project: {
+          with: {
+            user: true,
+            secrets: true,
+          },
+        },
+      },
+    });
+
+    if (!build) {
+      const error: CustomError = new Error("Build not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (build.project.userId !== Number(userId)) {
+      const error: CustomError = new Error("Unauthorized");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const [newBuild] = await db
+      .insert(buildTable)
+      .values({
+        commit: build.commit,
+        branch: build.branch,
+        commitAuthor: build.commitAuthor,
+        projectId: build.projectId,
+      })
+      .returning();
+
+    if (!newBuild) {
+      const error: CustomError = new Error("Failed to create new build");
+      error.statusCode = 500;
+      throw error;
+    }
+
+    res.status(200).json({
+      message: "Build re-queued",
+      build: newBuild,
+    });
+
+    await buildService.runBuild(
+      build.project,
+      build.project.repoUrl,
+      build.branch,
+      newBuild,
+      req.app.get("io"),
+      next,
+    );
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const getDeployment = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const deploymentId = req.params.deploymentId;
+
+    if (!deploymentId) {
+      const error: CustomError = new Error("Deployment ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!userId) {
+      const error: CustomError = new Error("User ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const deployment = await db.query.deploymentTable.findFirst({
+      where: eq(deploymentTable.id, Number(deploymentId)),
+      with: {
+        build: {
+          with: {
+            project: {
+              with: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!deployment) {
+      const error: CustomError = new Error("Deployment not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (deployment.build.project.userId !== Number(userId)) {
+      const error: CustomError = new Error("Unauthorized");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    res.status(200).json({
+      message: "Deployment fetched",
+      deployment,
+    });
+  } catch (err) {
+    const error = err as CustomError;
+
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+
+    next(error);
+  }
+};
+
+export const getBuild = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const buildId = req.params.buildId;
+
+    if (!buildId) {
+      const error: CustomError = new Error("Build ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!userId) {
+      const error: CustomError = new Error("User ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+    const build = await db.query.buildTable.findFirst({
+      where: eq(buildTable.id, Number(buildId)),
+      with: {
+        project: {
+          with: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!build) {
+      const error: CustomError = new Error("Build not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (build.project.userId !== Number(userId)) {
+      const error: CustomError = new Error("Unauthorized");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    res.status(200).json({
+      message: "Build fetched",
+      build,
+    });
   } catch (err) {
     const error = err as CustomError;
 

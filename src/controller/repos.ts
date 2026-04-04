@@ -6,8 +6,9 @@ import {
   type OrganizationInterface,
 } from "../shared/types.js";
 import { db } from "../db/index.js";
-import { userTable } from "../db/schema.js";
+import { buildTable, userTable } from "../db/schema.js";
 import { eq } from "drizzle-orm";
+import * as buildService from "../services/buildEngine.js";
 
 export const fetchOrganization = async (
   req: AuthRequest,
@@ -141,6 +142,7 @@ export const fetchRepos = async (
         branch: repo.default_branch,
         repoUrl: repo.html_url,
         owner: repo.owner.login,
+        updatedAt: repo.updated_at,
       };
     });
 

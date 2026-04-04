@@ -38,8 +38,7 @@ export const projectTable = pgTable("project", {
   branch: varchar("branch", { length: 100 }).notNull(),
   installCommand: text("install_command").default("npm install"),
   buildCommand: text("build_command"),
-  outputDirectory: varchar("output_directory", { length: 255 })
-    .default("./"),
+  outputDirectory: varchar("output_directory", { length: 255 }).default("./"),
   repoUrl: varchar("repo_url", { length: 500 }).notNull(),
   webhookId: varchar("webhook_id", { length: 255 }).notNull(),
   userId: bigint("user_id", { mode: "number" })
@@ -108,7 +107,7 @@ export const projectTableRelations = relations(
       fields: [projectTable.userId],
       references: [userTable.id],
     }),
-    build: many(buildTable),
+    builds: many(buildTable),
   }),
 );
 

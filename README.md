@@ -1,4 +1,4 @@
-# CICD Engine
+# Shipyard — CI/CD Engine
 
 A CI/CD deployment pipeline built from scratch. Connect a GitHub repo, push code, and the system automatically clones, builds, tests, and deploys your project.
 
@@ -41,6 +41,8 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - Custom branch selection, build commands, and install commands
 - Framework detection for automatic output directory resolution
 - Duplicate project name validation
+- Update and delete projects
+- Rebuild from previous builds
 - Encrypted secrets storage (AES-256-GCM) for environment variables
 
 **CI Engine**
@@ -63,12 +65,17 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - SPA fallback to index.html
 - Deployment records stored in database
 
+**User Management**
+- Profile updates (username, email)
+- Username uniqueness validation
+
 **Security**
 - GitHub OAuth for authentication
 - HMAC-SHA256 webhook verification to prevent unauthorized build triggers
 - AES-256-GCM encryption for stored secrets (random IV per encryption, auth tag for tamper detection)
 - Timing-safe comparison to prevent signature brute-forcing
 - Secrets decrypted only at build time, never exposed in responses
+- Project ownership verification on update, delete, and rebuild operations
 
 ## Tech Stack
 
@@ -88,8 +95,9 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 src/
 ├── controller/
 │   ├── auth.ts              # GitHub OAuth + JWT issuance
-│   ├── project.ts           # Project creation + webhook handler
-│   └── repos.ts             # Fetch organizations and repositories
+│   ├── project.ts           # Project CRUD, webhook handler, builds, deployments
+│   ├── repos.ts             # Fetch organizations and repositories
+│   └── user.ts              # Profile updates
 ├── db/
 │   ├── index.ts             # PostgreSQL pool + Drizzle instance
 │   └── schema.ts            # Tables, enums, and relations
@@ -101,6 +109,7 @@ src/
 ├── routes/
 │   ├── auth.ts              # OAuth routes
 │   ├── project.ts           # Project CRUD + repo browsing routes
+│   ├── user.ts              # User profile routes
 │   └── webhook.ts           # GitHub webhook endpoint
 ├── services/
 │   ├── buildEngine.ts       # Clone, build, test pipeline
@@ -108,7 +117,8 @@ src/
 ├── shared/
 │   └── types.ts             # Shared interfaces and constants
 ├── validation/
-│   └── project.ts           # Request validation rules
+│   ├── project.ts           # Project request validation rules
+│   └── user.ts              # Profile update validation rules
 └── index.ts                 # Server entry point
 ```
 
@@ -143,7 +153,7 @@ SECRET=your_jwt_secret
 ENCRYPTION_KEY=your_32_byte_hex_key
 WEBHOOK_SECRET=your_webhook_secret
 BASE_DOMAIN=lvh.me:8080
-WEBHOOK_CALLBACK=<ngrok or outray tunnel of your localhost>
+WEBHOOK_CALLBACK=<your server URL or tunnel>
 ```
 
 Generate the encryption key:
@@ -178,7 +188,7 @@ or
 outray 8080
 ```
 
-Update the webhook URL in your project creation to use the tunnel URL.
+Update the `WEBHOOK_CALLBACK` in your `.env` to use the tunnel URL.
 
 ## API Endpoints
 
@@ -189,6 +199,13 @@ Update the webhook URL in your project creation to use the tunnel URL.
 | GET | `/api/repo/orgs` | JWT | Fetch user's organizations + personal account |
 | GET | `/api/repo/repos` | JWT | Fetch repos for an org or personal account |
 | POST | `/api/repo` | JWT | Create project + register webhook |
+| GET | `/api/repo/projects` | JWT | Fetch all user projects with builds and deployments |
+| PUT | `/api/repo/projects/:projectId` | JWT | Update project settings |
+| DELETE | `/api/repo/projects/:projectId` | JWT | Delete a project |
+| POST | `/api/repo/rebuild/:buildId` | JWT | Re-run a build |
+| GET | `/api/repo/builds/:buildId` | JWT | Fetch a specific build |
+| GET | `/api/repo/deployments/:deploymentId` | JWT | Fetch a specific deployment |
+| PUT | `/api/user` | JWT | Update user profile |
 | POST | `/api/webhook` | HMAC | Receive GitHub push events |
 
 ## WebSocket Events
@@ -212,6 +229,7 @@ For example, a project named "test-repo" would be accessible at:
 ```
 http://test-repo.lvh.me:8080
 ```
+
 ### Running Tests
 ```bash
 npm test
