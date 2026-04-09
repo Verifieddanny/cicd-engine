@@ -41,6 +41,7 @@ export const projectTable = pgTable("project", {
   outputDirectory: varchar("output_directory", { length: 255 }).default("./"),
   repoUrl: varchar("repo_url", { length: 500 }).notNull(),
   webhookId: varchar("webhook_id", { length: 255 }).notNull(),
+  productionUrl: varchar("deployed_url", { length: 500 }),
   userId: bigint("user_id", { mode: "number" })
     .notNull()
     .references(() => userTable.id, { onDelete: "cascade" }),
@@ -54,6 +55,7 @@ export const buildTable = pgTable("build", {
   commit: varchar("commit", { length: 500 }).notNull(),
   branch: varchar("branch", { length: 100 }).notNull(),
   commitAuthor: varchar("commit_author", { length: 255 }).notNull(),
+  commitHash: varchar("commit_hash", { length: 50 }).notNull(),
   exitCode: integer("exit_code"),
   projectId: bigint("project_id", { mode: "number" })
     .notNull()
@@ -75,7 +77,6 @@ export const buildLogs = pgTable("build_logs", {
 export const deploymentTable = pgTable("deployment", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   status: deployedStatusEnum("status").notNull(),
-  deployedUrl: varchar("deployed_url", { length: 500 }),
   buildId: bigint("build_id", { mode: "number" })
     .notNull()
     .references(() => buildTable.id, { onDelete: "cascade" }),

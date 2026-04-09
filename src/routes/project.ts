@@ -3,29 +3,17 @@ import { projectCreationValidation, projectUpdateValidation } from "../validatio
 import {
   createProject,
   deleteProject,
-  getBuild,
-  getDeployment,
+  deleteSecret,
   getProjects,
-  rebuild,
   updateProject,
 } from "../controller/project.js";
-import { fetchOrganization, fetchRepos } from "../controller/repos.js";
 
 const ProjectRouter = Router();
 
 ProjectRouter.post("/", projectCreationValidation, createProject);
-ProjectRouter.get("/orgs", fetchOrganization);
-ProjectRouter.get("/repos", fetchRepos);
 ProjectRouter.get("/projects", getProjects);
-ProjectRouter.put(
-  "/projects/:projectId",
-
-  projectUpdateValidation,
-  updateProject,
-);
+ProjectRouter.put("/projects/:projectId", projectUpdateValidation, updateProject);
 ProjectRouter.delete("/projects/:projectId", deleteProject);
-ProjectRouter.post("/rebuild/:buildId", rebuild);
-ProjectRouter.get("/deployments/:deploymentId", getDeployment);
-ProjectRouter.get("/builds/:buildId", getBuild);
+ProjectRouter.delete("/secret/:secretId", deleteSecret);
 
 export default ProjectRouter;

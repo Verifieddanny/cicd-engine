@@ -9,7 +9,6 @@ import {
 import { db } from "../db/index.js";
 import {
   buildTable,
-  deploymentTable,
   projectTable,
   secretsTable,
   userTable,
@@ -18,6 +17,7 @@ import { eq } from "drizzle-orm";
 import { validationResult } from "express-validator";
 import { encrypt } from "../lib/encryption.js";
 import * as buildService from "../services/buildEngine.js";
+import { fetchRepoCommit } from "../services/fetchProjectCommits.js";
 
 export const createProject = async (
   req: AuthRequest,
@@ -57,6 +57,12 @@ export const createProject = async (
     const installCommand = req.body.installCommand;
     const repoUrl = req.body.repoUrl;
     const secrets = req.body.secrets || [];
+    const io: Server<
+      DefaultEventsMap,
+      DefaultEventsMap,
+      DefaultEventsMap,
+      any
+    > = req.app.get("io");
 
     const url = new URL(repoUrl);
 
@@ -64,6 +70,8 @@ export const createProject = async (
 
     const repoName = pathParts[pathParts.length - 1];
     const owner = pathParts[0];
+
+   
     const webhookResponse = await fetch(
       `${GITHUB_API}/repos/${owner}/${repoName}/hooks`,
       {
@@ -114,6 +122,12 @@ export const createProject = async (
       throw error;
     }
 
+    const fullProjectData = {
+      ...newProject,
+      user: { githubToken: user.accessToken },
+      secrets: []
+    };
+
     if (secrets && secrets.length > 0) {
       const secretsToInsert = secrets.map(
         (s: { key: string; value: string }) => ({
@@ -123,8 +137,12 @@ export const createProject = async (
         }),
       );
 
+      fullProjectData.secrets = secretsToInsert;
+
       await db.insert(secretsTable).values(secretsToInsert);
     }
+
+
 
     res.status(201).json({
       message: "project created",
@@ -132,6 +150,12 @@ export const createProject = async (
         ...newProject,
       },
     });
+
+
+
+    await fetchRepoCommit(owner || "", repoName || "", branch, user.accessToken, fullProjectData, io, next);
+
+
   } catch (err) {
     const error = err as CustomError;
 
@@ -182,6 +206,7 @@ export const handleWebhook = async (
       const author = payload.commits[0].author.name;
       const branch = payload.ref.replace("refs/heads/", "");
       const repoUrl: string = payload.repository.html_url;
+      const commitHash = payload.after;
 
       const project = await db.query.projectTable.findFirst({
         where: (table, { eq, and }) =>
@@ -206,6 +231,7 @@ export const handleWebhook = async (
           branch,
           commitAuthor: author,
           projectId: project.id,
+          commitHash,
         })
         .returning();
 
@@ -248,8 +274,10 @@ export const getProjects = async (
       with: {
         secrets: true,
         builds: {
+          orderBy: (buildTable, { desc }) => [desc(buildTable.startedAt)],
           with: {
             deployment: true,
+            logs: true,
           },
         },
       },
@@ -407,16 +435,16 @@ export const deleteProject = async (
   }
 };
 
-export const rebuild = async (
+export const deleteSecret = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction,
 ) => {
   try {
     const userId = req.userId;
-    const buildId = req.params.buildId;
+    const secretId = req.params.secretId
 
-    if (!buildId) {
+    if (!secretId) {
       const error: CustomError = new Error("Build ID is required");
       error.statusCode = 400;
       throw error;
@@ -428,59 +456,33 @@ export const rebuild = async (
       throw error;
     }
 
-    const build = await db.query.buildTable.findFirst({
-      where: eq(buildTable.id, Number(buildId)),
+    const secretProject = await db.query.secretsTable.findFirst({
+      where: eq(secretsTable.id, Number(secretId)),
       with: {
         project: {
           with: {
-            user: true,
-            secrets: true,
-          },
-        },
-      },
+            user: true
+          }
+        }
+      }
     });
-
-    if (!build) {
-      const error: CustomError = new Error("Build not found");
-      error.statusCode = 404;
-      throw error;
-    }
-
-    if (build.project.userId !== Number(userId)) {
+    if (secretProject?.project?.user.id !== Number(userId)) {
       const error: CustomError = new Error("Unauthorized");
       error.statusCode = 403;
       throw error;
     }
 
-    const [newBuild] = await db
-      .insert(buildTable)
-      .values({
-        commit: build.commit,
-        branch: build.branch,
-        commitAuthor: build.commitAuthor,
-        projectId: build.projectId,
-      })
-      .returning();
+    const [deletedSecrete] = await db.delete(secretsTable).where(eq(secretsTable.id, Number(secretId))).returning()
 
-    if (!newBuild) {
-      const error: CustomError = new Error("Failed to create new build");
+    if (!deletedSecrete) {
+      const error: CustomError = new Error("Failed to delete secret");
       error.statusCode = 500;
       throw error;
     }
 
     res.status(200).json({
-      message: "Build re-queued",
-      build: newBuild,
-    });
-
-    await buildService.runBuild(
-      build.project,
-      build.project.repoUrl,
-      build.branch,
-      newBuild,
-      req.app.get("io"),
-      next,
-    );
+      message: "secret deleted"
+    })
   } catch (err) {
     const error = err as CustomError;
 
@@ -490,125 +492,4 @@ export const rebuild = async (
 
     next(error);
   }
-};
-
-export const getDeployment = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.userId;
-    const deploymentId = req.params.deploymentId;
-
-    if (!deploymentId) {
-      const error: CustomError = new Error("Deployment ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (!userId) {
-      const error: CustomError = new Error("User ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const deployment = await db.query.deploymentTable.findFirst({
-      where: eq(deploymentTable.id, Number(deploymentId)),
-      with: {
-        build: {
-          with: {
-            project: {
-              with: {
-                user: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!deployment) {
-      const error: CustomError = new Error("Deployment not found");
-      error.statusCode = 404;
-      throw error;
-    }
-
-    if (deployment.build.project.userId !== Number(userId)) {
-      const error: CustomError = new Error("Unauthorized");
-      error.statusCode = 403;
-      throw error;
-    }
-
-    res.status(200).json({
-      message: "Deployment fetched",
-      deployment,
-    });
-  } catch (err) {
-    const error = err as CustomError;
-
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-
-    next(error);
-  }
-};
-
-export const getBuild = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const userId = req.userId;
-    const buildId = req.params.buildId;
-
-    if (!buildId) {
-      const error: CustomError = new Error("Build ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (!userId) {
-      const error: CustomError = new Error("User ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
-    const build = await db.query.buildTable.findFirst({
-      where: eq(buildTable.id, Number(buildId)),
-      with: {
-        project: {
-          with: {
-            user: true,
-          },
-        },
-      },
-    });
-
-    if (!build) {
-      const error: CustomError = new Error("Build not found");
-      error.statusCode = 404;
-      throw error;
-    }
-
-    if (build.project.userId !== Number(userId)) {
-      const error: CustomError = new Error("Unauthorized");
-      error.statusCode = 403;
-      throw error;
-    }
-
-    res.status(200).json({
-      message: "Build fetched",
-      build,
-    });
-  } catch (err) {
-    const error = err as CustomError;
-
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-
-    next(error);
-  }
-};
+}

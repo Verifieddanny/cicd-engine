@@ -6,9 +6,8 @@ import {
   type OrganizationInterface,
 } from "../shared/types.js";
 import { db } from "../db/index.js";
-import { buildTable, userTable } from "../db/schema.js";
+import {  userTable } from "../db/schema.js";
 import { eq } from "drizzle-orm";
-import * as buildService from "../services/buildEngine.js";
 
 export const fetchOrganization = async (
   req: AuthRequest,

@@ -4,7 +4,6 @@ import type { NextFunction, Request, Response } from "express";
 import { db } from "../../src/db/index.js";
 import { createProject } from "../../src/controller/project.js";
 import { fetchOrganization, fetchRepos } from "../../src/controller/repos.js";
-import { GITHUB_API } from "../../src/shared/types.js";
 
 describe("Project Controller", () => {
   let statusStub: sinon.SinonStub;
@@ -129,6 +128,7 @@ describe("Project Controller", () => {
       },
       userId: 1,
     } as unknown as Request;
+    const updatedAt = new Date().toISOString();
 
     sinon.stub(db, "selectDistinct").returns({
       from: sinon.stub().returns({
@@ -148,6 +148,7 @@ describe("Project Controller", () => {
           default_branch: "main",
           html_url: "https://github.com/testuser/repo1",
           owner: { login: "testuser" },
+          updated_at: updatedAt,
         },
       ],
     } as any);
@@ -162,6 +163,7 @@ describe("Project Controller", () => {
           branch: "main",
           repoUrl: "https://github.com/testuser/repo1",
           owner: "testuser",
+          updatedAt,
         },
       ],
     });

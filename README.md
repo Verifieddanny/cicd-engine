@@ -10,6 +10,7 @@ A CI/CD deployment pipeline built from scratch. Connect a GitHub repo, push code
 4. **Push code** — GitHub fires a signed webhook to the server
 5. **Build** — the server clones your repo, generates a Dockerfile if needed, builds a Docker image, and runs your build command inside an isolated container
 6. **Deploy** — if the build passes and the project has no sensitive env variables, the output is deployed and served at a subdomain
+7. **Rollback** — revert to a previous deployment by re-running the build from that deployment's commit
 
 ## Architecture
 
@@ -43,7 +44,10 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - Duplicate project name validation
 - Update and delete projects
 - Rebuild from previous builds
+- Rollback to previous deployments
+- Delete individual secrets
 - Encrypted secrets storage (AES-256-GCM) for environment variables
+- Production URL stored on project level
 
 **CI Engine**
 - HMAC-SHA256 webhook signature verification with timing-safe comparison
@@ -64,6 +68,7 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - Subdomain-based routing middleware
 - SPA fallback to index.html
 - Deployment records stored in database
+- Rollback support — revert to previous deployment
 
 **User Management**
 - Profile updates (username, email)
@@ -75,7 +80,7 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 - AES-256-GCM encryption for stored secrets (random IV per encryption, auth tag for tamper detection)
 - Timing-safe comparison to prevent signature brute-forcing
 - Secrets decrypted only at build time, never exposed in responses
-- Project ownership verification on update, delete, and rebuild operations
+- Project ownership verification on update, delete, rebuild, and rollback operations
 
 ## Tech Stack
 
@@ -95,7 +100,9 @@ GitHub Push → Webhook (HMAC-SHA256 verified) → Clone Repo → Detect Framewo
 src/
 ├── controller/
 │   ├── auth.ts              # GitHub OAuth + JWT issuance
-│   ├── project.ts           # Project CRUD, webhook handler, builds, deployments
+│   ├── builds.ts            # Rebuild, fetch individual builds
+│   ├── deployment.ts        # Fetch deployments, rollback
+│   ├── project.ts           # Project CRUD, secrets management
 │   ├── repos.ts             # Fetch organizations and repositories
 │   └── user.ts              # Profile updates
 ├── db/
@@ -108,7 +115,10 @@ src/
 │   └── socket-auth.ts       # JWT verification for WebSocket
 ├── routes/
 │   ├── auth.ts              # OAuth routes
-│   ├── project.ts           # Project CRUD + repo browsing routes
+│   ├── builds.ts            # Build operations routes
+│   ├── deployments.ts       # Deployment operations routes
+│   ├── project.ts           # Project CRUD routes
+│   ├── repo.ts              # Repo browsing routes
 │   ├── user.ts              # User profile routes
 │   └── webhook.ts           # GitHub webhook endpoint
 ├── services/
@@ -126,13 +136,13 @@ src/
 
 **User** — GitHub OAuth profile and access token
 
-**Project** — Connected repo with branch, build/install commands, output directory, and webhook ID
+**Project** — Connected repo with branch, build/install commands, output directory, production URL, and webhook ID
 
 **Build** — Individual build record with status, commit info, exit code, and timestamps
 
 **Build Logs** — Line-by-line build output with line numbers, linked to a build
 
-**Deployment** — Deployment record with status and served URL, linked to a build
+**Deployment** — Deployment record with status, linked to a build
 
 **Secrets** — Encrypted environment variables linked to a project
 
@@ -154,6 +164,7 @@ ENCRYPTION_KEY=your_32_byte_hex_key
 WEBHOOK_SECRET=your_webhook_secret
 BASE_DOMAIN=lvh.me:8080
 WEBHOOK_CALLBACK=<your server URL or tunnel>
+FRONTEND_URL=http://localhost:3000
 ```
 
 Generate the encryption key:
@@ -190,23 +201,66 @@ outray 8080
 
 Update the `WEBHOOK_CALLBACK` in your `.env` to use the tunnel URL.
 
+### Deploying to VPS
+
+```bash
+ssh root@<your-server-ip>
+cd /root/cicd-engine
+git pull
+npx drizzle-kit push
+pm2 restart cicd-engine
+```
+
 ## API Endpoints
 
+### Auth
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/api/auth/github` | No | Redirect to GitHub OAuth |
-| GET | `/api/auth/github/callback` | No | Handle OAuth callback |
+| GET | `/api/auth/github/callback` | No | Handle OAuth callback, redirect to frontend |
+
+### Repos
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
 | GET | `/api/repo/orgs` | JWT | Fetch user's organizations + personal account |
 | GET | `/api/repo/repos` | JWT | Fetch repos for an org or personal account |
-| POST | `/api/repo` | JWT | Create project + register webhook |
-| GET | `/api/repo/projects` | JWT | Fetch all user projects with builds and deployments |
-| PUT | `/api/repo/projects/:projectId` | JWT | Update project settings |
-| DELETE | `/api/repo/projects/:projectId` | JWT | Delete a project |
-| POST | `/api/repo/rebuild/:buildId` | JWT | Re-run a build |
-| GET | `/api/repo/builds/:buildId` | JWT | Fetch a specific build |
-| GET | `/api/repo/deployments/:deploymentId` | JWT | Fetch a specific deployment |
+
+### Projects
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/project` | JWT | Create project + register webhook |
+| GET | `/api/project/projects` | JWT | Fetch all user projects with builds and deployments |
+| PUT | `/api/project/projects/:projectId` | JWT | Update project settings |
+| DELETE | `/api/project/projects/:projectId` | JWT | Delete a project |
+| DELETE | `/api/project/secret/:secretId` | JWT | Delete a secret |
+
+### Builds
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/build/rebuild/:buildId` | JWT | Re-run a build |
+| GET | `/api/build/:buildId` | JWT | Fetch a specific build |
+
+### Deployments
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/deploy/:deploymentId` | JWT | Fetch a specific deployment |
+| PUT | `/api/deploy/rollback?latest=<lastestId>&prev=<prevId>` | JWT | Rollback to a previous deployment |
+
+### Users
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
 | PUT | `/api/user` | JWT | Update user profile |
+
+### Webhooks
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
 | POST | `/api/webhook` | HMAC | Receive GitHub push events |
+
+### Health
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | No | Health check |
+| GET | `/api` | No | API welcome |
 
 ## WebSocket Events
 

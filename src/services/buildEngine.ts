@@ -11,7 +11,7 @@ import type { DefaultEventsMap, Server } from "socket.io";
 import { deployProject } from "./deploymentEngine.js";
 import type { NextFunction } from "express";
 
-interface projectInterface {
+export interface projectInterface {
   id: number;
   createdAt: Date;
   updatedAt: Date;
@@ -23,7 +23,7 @@ interface projectInterface {
   repoUrl: string;
   webhookId: string;
   userId: number;
-  user: {
+  user?: {
     id: number;
     username: string;
     email: string;
@@ -33,7 +33,7 @@ interface projectInterface {
     createdAt: Date;
     updatedAt: Date;
   };
-  secrets: {
+  secrets?: {
     id: number;
     createdAt: Date | null;
     projectId: number | null;
@@ -48,6 +48,7 @@ interface buildInterface {
   status: "queued" | "running" | "passed" | "failed";
   commit: string;
   commitAuthor: string;
+  commitHash: string | null;
   exitCode: number | null;
   projectId: number;
   startedAt: Date;
@@ -61,10 +62,12 @@ export const runBuild = async (
   newBuild: buildInterface,
   io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
   next: NextFunction,
+  isRollback?: boolean
 ) => {
   const buildId = Date.now();
   const folder = `${project.name}-${buildId}`;
   const buildPath = path.join(process.cwd(), "temp", folder);
+  const commitHash = newBuild.commitHash || "";
 
   fs.mkdirSync(buildPath, { recursive: true });
   let hasEnvFile = false;
@@ -95,31 +98,39 @@ export const runBuild = async (
 
   const authenticatedRepoUrl = repoUrl.replace(
     "https://",
-    `https://x-access-token:${project.user.githubToken}@`,
+    `https://x-access-token:${project.user?.githubToken}@`,
   );
 
   const cloner = spawn(
     "git",
-    ["clone", "--branch", branch, authenticatedRepoUrl, "."],
-    {
-      cwd: buildPath,
-    },
+    ["clone", "--branch", branch, "--depth", "1", authenticatedRepoUrl, "."],
+    { cwd: buildPath }
   );
 
-  cloner.stderr.on("data", (data) => {
-    const isActualError = /error|failed|fatal|exception/i.test(data.toString());
-    const logType = isActualError ? "error" : "info";
-
-    if (isActualError) {
-      console.error(`[CLONE ERROR]: ${data}`);
-    }
-  });
-
   const [cloneExitCode] = await once(cloner, "close");
-  if (cloneExitCode !== 0) {
-    const error: CustomError = new Error("Git clone failed");
-    throw error;
-  }
+  if (cloneExitCode !== 0) throw new Error("Git clone failed");
+
+  console.log(`[CI]: Fetching commit ${commitHash}...`);
+  const fetcher = spawn(
+    "git",
+    ["fetch", "origin", commitHash, "--depth", "1"],
+    { cwd: buildPath }
+  );
+
+  const [fetchExitCode] = await once(fetcher, "close");
+  if (fetchExitCode !== 0) throw new Error(`Git fetch failed for ${commitHash}`);
+
+  console.log(`[CI]: Checking out ${commitHash}...`);
+  const checkouter = spawn(
+    "git",
+    ["checkout", commitHash],
+    { cwd: buildPath }
+  );
+
+  const [checkoutExitCode] = await once(checkouter, "close");
+  if (checkoutExitCode !== 0) throw new Error(`Git checkout failed for ${commitHash}`);
+
+  console.log(`[CI]: Repository is now at commit ${commitHash}`);
 
   if (!project.buildCommand) {
     await deployProject(
@@ -129,6 +140,7 @@ export const runBuild = async (
       buildPath,
       project.name,
       io,
+      isRollback
     );
     fs.rmSync(buildPath, { recursive: true, force: true });
     return;
@@ -317,6 +329,7 @@ export const runBuild = async (
                 buildPath,
                 project.name,
                 io,
+                isRollback,
                 outputDir,
               );
             }

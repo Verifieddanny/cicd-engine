@@ -19,6 +19,9 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { SocketAuth } from "./middleware/socket-auth.js";
 import UserRouter from "./routes/user.js";
+import RepoRouter from "./routes/repo.js";
+import BuildRouter from "./routes/builds.js";
+import DeploymentRouter from "./routes/deployments.js";
 
 dotenv.config();
 
@@ -77,9 +80,13 @@ app.use(
 app.use(subdomainMiddleware);
 
 app.use(`${ENTRY_POINT}/auth`, AuthRouter);
-app.use(`${ENTRY_POINT}/repo`, isAuth, ProjectRouter);
+app.use(`${ENTRY_POINT}/project`, isAuth, ProjectRouter)
+app.use(`${ENTRY_POINT}/repo`, isAuth, RepoRouter);
 app.use(`${ENTRY_POINT}/webhook`, WebhookRouter);
 app.use(`${ENTRY_POINT}/user`, isAuth, UserRouter);
+app.use(`${ENTRY_POINT}/build`, isAuth, BuildRouter);
+app.use(`${ENTRY_POINT}/deploy`, isAuth, DeploymentRouter)
+
 app.get("/health", (_req, res) => {
   res.status(200).json({ message: "OK" });
 });

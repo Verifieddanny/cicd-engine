@@ -11,11 +11,13 @@ export const redirectToGithub = (
   _next: NextFunction,
 ) => {
   const scopes = "read:user,repo,read:org";
+
   res
     .status(302)
     .redirect(
       `${GITHUB_AUTH_URL}?client_id=${process.env.CLIENT_ID}&scope=${scopes}&prompt=consent`,
     );
+
 };
 
 export const handleCallback = async (
@@ -126,21 +128,12 @@ export const handleCallback = async (
     };
 
     const signOptions: SignOptions = {
-      expiresIn: "1h",
+      expiresIn: "3h",
     };
 
     const token = jwt.sign(payload, process.env.SECRET!, signOptions);
 
-    res.status(200).json({
-      message: "Login Successful",
-      token,
-      user: {
-        username: newUser[0]!.username,
-        avatar: newUser[0]!.avatar,
-        github_id: newUser[0]!.githubId,
-        email: newUser[0]!.email,
-      },
-    });
+    res.status(302).redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}&username=${newUser[0]!.username}&avatar=${newUser[0]!.avatar}`);
   } catch (err) {
     const error = err as CustomError;
 

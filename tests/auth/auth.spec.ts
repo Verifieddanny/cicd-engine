@@ -80,7 +80,9 @@ describe("Auth Controller", () => {
 
     await handleCallback(req, res, () => {});
 
-    expect(statusStub.calledWith(200)).to.be.true;
-    expect(jsonStub.firstCall.args[0]).to.have.property("token");
+   expect(statusStub.calledWith(302)).to.be.true;
+    expect(redirectStub.firstCall.args[0]).to.contain(
+      `username=${encodeURIComponent("testuser")}`,
+    );
   });
 });

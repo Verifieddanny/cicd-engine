@@ -3,7 +3,8 @@ import path from "node:path";
 import type { DefaultEventsMap, Server } from "socket.io";
 import type { CustomError } from "../shared/types.js";
 import { db } from "../db/index.js";
-import { deploymentTable } from "../db/schema.js";
+import { deploymentTable, projectTable } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 export const deployProject = async (
   userId: number,
@@ -12,6 +13,7 @@ export const deployProject = async (
   buildPath: string,
   name: string,
   io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
+  isRollback: boolean = false,
   outputDir?: string | null,
 ) => {
   const folder = name.toLowerCase().replace(/\s+/g, "-");
@@ -50,17 +52,21 @@ export const deployProject = async (
     url: deployedUrl,
   });
 
-  const createDeployment = await db.insert(deploymentTable).values({
-    status: "live",
-    deployedUrl,
-    buildId,
-  });
+  await db.update(projectTable).set({ productionUrl: deployedUrl }).where(eq(projectTable.id, Number(projectId)))
 
-  if (!createDeployment) {
-    const err: CustomError = new Error(
-      `[DEPLOYMENT ERROR]: Failed to create deployment record in DB.`,
-    );
-    err.statusCode = 500;
-    throw err;
+  if (!isRollback) {
+
+    const createDeployment = await db.insert(deploymentTable).values({
+      status: "live",
+      buildId,
+    });
+    if (!createDeployment) {
+      const err: CustomError = new Error(
+        `[DEPLOYMENT ERROR]: Failed to create deployment record in DB.`,
+      );
+      err.statusCode = 500;
+      throw err;
+    }
   }
+
 };
