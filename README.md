@@ -4,6 +4,9 @@
 
 # Shipyard — CI/CD Engine
 
+[![Status](https://img.shields.io/badge/status-live-emerald)](http://useshipyard.xyz)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A CI/CD deployment pipeline built from scratch. Connect a GitHub repo, push code, and the system automatically clones, builds, tests, and deploys your project.
 
 ## How It Works
