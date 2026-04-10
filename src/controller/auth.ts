@@ -133,7 +133,7 @@ export const handleCallback = async (
 
     const token = jwt.sign(payload, process.env.SECRET!, signOptions);
 
-    res.status(302).redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}&username=${newUser[0]!.username}&avatar=${newUser[0]!.avatar}`);
+    res.status(302).redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}&username=${newUser[0]!.username}&avatar=${newUser[0]!.avatar}&email=${newUser[0]!.email}&createdAt=${newUser[0]!.createdAt}`);
   } catch (err) {
     const error = err as CustomError;
 

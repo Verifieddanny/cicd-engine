@@ -19,8 +19,7 @@ export const fetchRepoCommit = async (owner: string, repoName: string, branch: s
     webhookId: string;
     productionUrl: string | null;
     userId: number;
-}, io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any>,
-    next: NextFunction,) => {
+}) => {
     const commitResponse = await fetch(
         `${GITHUB_API}/repos/${owner}/${repoName}/commits/${branch}`,
         {
@@ -61,9 +60,7 @@ export const fetchRepoCommit = async (owner: string, repoName: string, branch: s
             throw error;
         }
 
-        await buildService.runBuild(project, project.repoUrl, branch, newBuild, io, next);
-
-        // Will need  a websocker event emit here when build is done 
+        return newBuild;
     } else {
         throw Error("[CI]: Could not fetch initial commit details");
     }

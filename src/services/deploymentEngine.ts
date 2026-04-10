@@ -43,6 +43,14 @@ export const deployProject = async (
   });
 
   const deployedUrl = `http://${name}.${process.env.BASE_DOMAIN}`;
+
+  io.to(userId.toString()).emit("run_logs", {
+    projectId: projectId,
+    buildId: buildId,
+    log: `🚀 Project deployed at: ${deployedUrl}`,
+    lineNumber: 0,
+    type: "info"
+  });
   console.log(`🚀 Project deployed at: ${deployedUrl}`);
 
   io.to(userId.toString()).emit("deploymentUpdate", {

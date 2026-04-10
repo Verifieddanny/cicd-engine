@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { buildTable } from "../db/schema.js";
 import * as buildService from "../services/buildEngine.js";
+import type { DefaultEventsMap, Server } from "socket.io";
 
 
 export const rebuild = async (
@@ -14,6 +15,13 @@ export const rebuild = async (
     try {
         const userId = req.userId;
         const buildId = req.params.buildId;
+         const io: Server<
+              DefaultEventsMap,
+              DefaultEventsMap,
+              DefaultEventsMap,
+              any
+            > = req.app.get("io");
+
 
         if (!buildId) {
             const error: CustomError = new Error("Build ID is required");
@@ -78,9 +86,10 @@ export const rebuild = async (
             build.project.repoUrl,
             build.branch,
             newBuild,
-            req.app.get("io"),
+            io,
             next,
         );
+        
     } catch (err) {
         const error = err as CustomError;
 

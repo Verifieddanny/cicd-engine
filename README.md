@@ -270,6 +270,7 @@ pm2 restart cicd-engine
 | `build_errors` | Server → Client | Build error output |
 | `run_logs` | Server → Client | Test/run output |
 | `run_error` | Server → Client | Test/run errors |
+| `buildStatusUpdate` | Server → Client | Build status |
 | `deploymentUpdate` | Server → Client | Deployment status + URL |
 
 ### Testing Deployed Projects Locally

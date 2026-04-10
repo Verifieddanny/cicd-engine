@@ -30,7 +30,6 @@ export const projectCreationValidation = [
 
 export const projectUpdateValidation = [
   body("name")
-    .optional()
     .notEmpty()
     .trim()
     .custom(async (value, { req }) => {
@@ -44,10 +43,11 @@ export const projectUpdateValidation = [
           }
         });
     }),
-  body("branch").optional().notEmpty().trim(),
+  body("branch").notEmpty().trim(),
+  
   body("buildCommand").optional().notEmpty().trim(),
   body("installCommand").optional().notEmpty().trim(),
-  body("repoUrl").optional().isURL(),
+  body("outputDirectory").optional().notEmpty().trim(),
 
   body("secrets").optional().isArray(),
   body("secrets.*.key").notEmpty().withMessage("Secret key is required"),

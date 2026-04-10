@@ -71,7 +71,7 @@ export const createProject = async (
     const repoName = pathParts[pathParts.length - 1];
     const owner = pathParts[0];
 
-   
+
     const webhookResponse = await fetch(
       `${GITHUB_API}/repos/${owner}/${repoName}/hooks`,
       {
@@ -143,17 +143,25 @@ export const createProject = async (
     }
 
 
+    const initialBuild = await fetchRepoCommit(
+      owner || "",
+      repoName || "",
+      branch,
+      user.accessToken,
+      fullProjectData,
+    );
+
+
 
     res.status(201).json({
       message: "project created",
-      project: {
-        ...newProject,
-      },
+      project: newProject,
+      initialBuildId: initialBuild.id
     });
 
+    await buildService.runBuild(fullProjectData, fullProjectData.repoUrl, branch, initialBuild, io, next);
 
 
-    await fetchRepoCommit(owner || "", repoName || "", branch, user.accessToken, fullProjectData, io, next);
 
 
   } catch (err) {
@@ -312,7 +320,7 @@ export const updateProject = async (
   try {
     const userId = req.userId;
     const projectId = req.params.projectId;
-    const { name, branch, buildCommand, installCommand } = req.body;
+    const { buildCommand, installCommand, outputDirectory, name, branch } = req.body;
     const secrets = req.body.secrets || [];
 
     if (!projectId) {
@@ -344,6 +352,7 @@ export const updateProject = async (
         branch: branch || project.branch,
         buildCommand: buildCommand || project.buildCommand,
         installCommand: installCommand || project.installCommand,
+        outputDirectory: outputDirectory || project.outputDirectory,
         updatedAt: new Date(),
       })
       .where(eq(projectTable.id, Number(projectId)))
@@ -405,6 +414,9 @@ export const deleteProject = async (
 
     const project = await db.query.projectTable.findFirst({
       where: eq(projectTable.id, Number(projectId)),
+      with: {
+        user: true,
+      }
     });
 
     if (!project) {
@@ -417,6 +429,30 @@ export const deleteProject = async (
       const error: CustomError = new Error("Unauthorized");
       error.statusCode = 403;
       throw error;
+    }
+
+    if (project.webhookId && project.user?.githubToken) {
+      try {
+        const url = new URL(project.repoUrl);
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        const owner = pathParts[0];
+        const repo = pathParts[1]?.replace(".git", "");
+
+        await fetch(
+          `${GITHUB_API}/repos/${owner}/${repo}/hooks/${project.webhookId}`,
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${project.user.githubToken}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2026-03-10",
+            },
+          }
+        );
+        console.log(`[GITHUB]: Webhook ${project.webhookId} removed for ${project.name}`);
+      } catch (webhookErr) {
+        console.error("Failed to delete GitHub webhook:", webhookErr);
+      }
     }
 
     await db.delete(projectTable).where(eq(projectTable.id, Number(projectId)));

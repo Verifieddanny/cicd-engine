@@ -18,7 +18,6 @@ import WebhookRouter from "./routes/webhook.js";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { SocketAuth } from "./middleware/socket-auth.js";
-import UserRouter from "./routes/user.js";
 import RepoRouter from "./routes/repo.js";
 import BuildRouter from "./routes/builds.js";
 import DeploymentRouter from "./routes/deployments.js";
@@ -83,7 +82,6 @@ app.use(`${ENTRY_POINT}/auth`, AuthRouter);
 app.use(`${ENTRY_POINT}/project`, isAuth, ProjectRouter)
 app.use(`${ENTRY_POINT}/repo`, isAuth, RepoRouter);
 app.use(`${ENTRY_POINT}/webhook`, WebhookRouter);
-app.use(`${ENTRY_POINT}/user`, isAuth, UserRouter);
 app.use(`${ENTRY_POINT}/build`, isAuth, BuildRouter);
 app.use(`${ENTRY_POINT}/deploy`, isAuth, DeploymentRouter)
 
@@ -97,8 +95,9 @@ app.get(`${ENTRY_POINT}`, (_req, res) => {
 export const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:3000",
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
@@ -120,6 +119,8 @@ const startServer = async () => {
       console.log("User connected:", userId);
 
       socket.join(userId.toString());
+
+      console.log("User joined room", userId.toString());
 
       socket.on("disconnect", async () => {
         console.log("User Disconnected:", userId);

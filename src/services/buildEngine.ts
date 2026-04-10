@@ -24,14 +24,14 @@ export interface projectInterface {
   webhookId: string;
   userId: number;
   user?: {
-    id: number;
-    username: string;
-    email: string;
-    avatar: string;
+    id?: number;
+    username?: string;
+    email?: string;
+    avatar?: string;
     githubToken: string;
-    githubId: number;
-    createdAt: Date;
-    updatedAt: Date;
+    githubId?: number;
+    createdAt?: Date;
+    updatedAt?: Date;
   };
   secrets?: {
     id: number;
@@ -68,6 +68,12 @@ export const runBuild = async (
   const folder = `${project.name}-${buildId}`;
   const buildPath = path.join(process.cwd(), "temp", folder);
   const commitHash = newBuild.commitHash || "";
+
+  io.to(project.userId.toString()).emit("buildStatusUpdate", {
+    projectId: project.id,
+    buildId: newBuild.id,
+    status: "running",
+  });
 
   fs.mkdirSync(buildPath, { recursive: true });
   let hasEnvFile = false;
@@ -206,8 +212,11 @@ export const runBuild = async (
 
     io.to(project.userId.toString()).emit("build_logs", {
       projectId: project.id,
+      buildId: newBuild.id,
       log: data.toString(),
       lineNumber: i,
+      type: "info"
+
     });
     logBuffer.push({
       lineNumber: i++,
@@ -225,8 +234,10 @@ export const runBuild = async (
 
     io.to(project.userId.toString()).emit("build_errors", {
       projectId: project.id,
+      buildId: newBuild.id,
       log: data.toString(),
       lineNumber: i,
+      type: logType
     });
     logBuffer.push({
       lineNumber: i++,
@@ -243,6 +254,11 @@ export const runBuild = async (
     }
 
     if (code !== 0) {
+      io.to(project.userId.toString()).emit("buildStatusUpdate", {
+        projectId: project.id,
+        buildId: newBuild.id,
+        status: "failed",
+      });
       const err: CustomError = new Error(
         `[CI]: Build ${newBuild.id} failed with code ${code}`,
       );
@@ -279,8 +295,10 @@ export const runBuild = async (
         const logString = data.toString();
         io.to(project.userId.toString()).emit("run_logs", {
           projectId: project.id,
+          buildId: newBuild.id,
           log: data.toString(),
           lineNumber: j,
+          type: "info"
         });
         logBuffer.push({
           lineNumber: j++,
@@ -292,11 +310,16 @@ export const runBuild = async (
 
       runner.stderr.on("data", async (data) => {
         const logString = data.toString();
+        const isActualError = /error|failed|fatal|exception/i.test(logString);
+        const logType = isActualError ? "error" : "info";
+
 
         io.to(project.userId.toString()).emit("run_error", {
           projectId: project.id,
+          buildId: newBuild.id,
           log: data.toString(),
           lineNumber: j,
+          type: logType
         });
 
         logBuffer.push({
@@ -315,6 +338,11 @@ export const runBuild = async (
           }
 
           if (code === 0) {
+            io.to(project.userId.toString()).emit("buildStatusUpdate", {
+              projectId: project.id,
+              buildId: newBuild.id,
+              status: "passed",
+            });
             console.log("✅ CI PASSED: Code is healthy!");
             await db
               .update(buildTable)
@@ -334,6 +362,11 @@ export const runBuild = async (
               );
             }
           } else {
+            io.to(project.userId.toString()).emit("buildStatusUpdate", {
+              projectId: project.id,
+              buildId: newBuild.id,
+              status: "failed",
+            });
             const err: CustomError = new Error(
               "CI FAILED: Tests did not pass.",
             );
