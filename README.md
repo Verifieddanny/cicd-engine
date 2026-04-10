@@ -253,11 +253,6 @@ pm2 restart cicd-engine
 | GET | `/api/deploy/:deploymentId` | JWT | Fetch a specific deployment |
 | PUT | `/api/deploy/rollback?latest=<lastestId>&prev=<prevId>` | JWT | Rollback to a previous deployment |
 
-### Users
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| PUT | `/api/user` | JWT | Update user profile |
-
 ### Webhooks
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
