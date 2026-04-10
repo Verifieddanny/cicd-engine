@@ -128,7 +128,7 @@ export const handleCallback = async (
     };
 
     const signOptions: SignOptions = {
-      expiresIn: "3h",
+      expiresIn: "1h",
     };
 
     const token = jwt.sign(payload, process.env.SECRET!, signOptions);
