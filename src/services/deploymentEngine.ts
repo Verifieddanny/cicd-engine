@@ -42,7 +42,7 @@ export const deployProject = async (
     force: true,
   });
 
-  const deployedUrl = `http://${name}.${process.env.BASE_DOMAIN}`;
+  const deployedUrl = `https://${name}.${process.env.BASE_DOMAIN}`;
 
   io.to(userId.toString()).emit("run_logs", {
     projectId: projectId,
