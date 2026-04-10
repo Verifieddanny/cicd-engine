@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/favicon.ico" width="80" alt="Shipyard Logo" />
+</p>
+
 # Shipyard — CI/CD Engine
 
 A CI/CD deployment pipeline built from scratch. Connect a GitHub repo, push code, and the system automatically clones, builds, tests, and deploys your project.
